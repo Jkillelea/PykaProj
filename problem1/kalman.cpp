@@ -1,5 +1,6 @@
 // Depends on libcsv3, libcsv-dev, libeigen3-dev
 // Compile with g++ kalman.cpp -lcsv
+#include <cmath>
 #include <eigen3/Eigen/Eigen>
 #include <csv.h>
 #include <eigen3/Eigen/src/Core/Matrix.h>
@@ -7,6 +8,16 @@
 #include <iostream>
 #include <vector>
 #include <cstdlib>
+
+#define CHECK_NAN(x) \
+do { \
+    if (x.hasNaN()) { \
+            std::cout << #x << " has NaN!" << std::endl; \
+            std::cout << "Iteration: " << t << std::endl; \
+            std::cout << x << std::endl; \
+    } \
+} while (0)
+
 
 std::string read_file(const std::string &name) {
     std::ifstream file;
@@ -29,7 +40,7 @@ std::string read_file(const std::string &name) {
 std::vector<double> record_data;
 std::vector<std::vector<double>> logfile_data;
 
-// Called for each element if line
+// Called for each element of line
 void field_callback(void *field, size_t field_len, void *user_data) {
     double field_data = std::strtod((char *) field, nullptr);
     record_data.push_back(field_data);
@@ -59,25 +70,20 @@ int main(int argc, char *argv[]) {
     // State transition matrix for unforced motion (Ax + Bu, u = 0)
     const Eigen::Matrix3d A {
      //  MSL dMSL AGL
-        {1,  1,   0}, // MSL = MSL + dMSL
+        {1,  1,   0}, //  MSL = MSL + dMSL
         {0,  1,   0}, // dMSL = dMSL
-        {0,  1,   1}, // AGL = AGL + dMSL
+        {0,  1,   1}, //  AGL = AGL + dMSL
     };
 
     // (Co)variance matrix
     Eigen::Matrix3d P {
-        {1, 0, 0},
-        {0, 1, 0},
-        {0, 0, 1},
+        {0, 0, 0},
+        {0, 0, 0},
+        {0, 0, 0},
     };
 
     // (Co)variance growth per iteration, mostly guessing
-    const Eigen::Matrix3d Q {
-    //  MSL     dMSL      AGL
-        {0.01,   1,        1   }, // MSL
-        {1,      0.01,    10   }, // dMSL
-        {1,      10,       0.01}, // AGL
-    };
+    const Eigen::Matrix3d Q = 0.01 * Eigen::Matrix3d::Identity();
 
     // (Co)variance matrix of measurements, found experimentally
     const Eigen::Matrix4d R {
@@ -87,12 +93,13 @@ int main(int argc, char *argv[]) {
         {3.1304,   3.1409,    1.1770,  11.4385},
     };
 
+    // State to measurement matrix.
     Eigen::MatrixXd H {
-        //   MSL dMSL AGL
-        {1,  0,   0},  // GPS     = MSL
+      // MSL dMSL AGL
+        {1,  0,   0},  //  GPS    = MSL
         {0,  1,   0},  // dGPS    = dMSL
-        {0,  0,   1},  // laser1  = AGL
-        {0,  0,   1},  // laser2  = MSL - Terrain
+        {0,  0,   1},  //  laser1 = AGL
+        {0,  0,   1},  //  laser2 = AGL
     };
 
 
@@ -106,27 +113,39 @@ int main(int argc, char *argv[]) {
         double laser1 = row[2];
         double laser2 = row[3];
 
-        // Calculate derivatives
+        // Calculate derivative of GPS altitude to get aircraft vertical velocity
         double dt = t - last_t;
         double dgps = dt > 0 ? (gps - last_gps) / dt : 0;
 
 
         // Next predicted state and covariance
         auto x_next = A * x;
-        auto P_next = A * P * A.transpose() + Q;
+        CHECK_NAN(x_next);
+
+        auto At = A.transpose();
+        auto P_next = A * P * At + Q;
+        CHECK_NAN(P_next);
 
         // measurement vector
         Eigen::Vector4d z {{gps, dgps, laser1, laser2}};
-        auto z_pred = H * x;
 
         // Calculate Kalman gain
-        auto K = P_next * H.transpose() * ((H * P_next * H.transpose() + R).inverse());
+        auto Ht = H.transpose();
+        Eigen::MatrixXd K = P_next * Ht * (H * P_next * Ht + R).inverse();
+        CHECK_NAN(K);
 
         // Update
-        x = x_next + K * (z - z_pred);
-        P = P_next - K * H * P_next;
+        Eigen::Vector4d z_pred = H * x;
+        CHECK_NAN(z_pred);
 
-        std::cout << x << std::endl << std::endl;
+        x = x_next + K * (z - z_pred);
+        CHECK_NAN(x);
+
+        P = P_next - K * (H * P_next);
+        CHECK_NAN(P);
+
+        // Output timestamp and AGL altitude
+        std::cout << t << "," << x[2] << std::endl;
     }
 
     return 0;
