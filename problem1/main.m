@@ -26,15 +26,10 @@ A = [
     ];
 
 % initial state estimation covariance
-P = ones(length(x));
+P = zeros(length(x));
 
 % state estimation uncertainty growth (per iteration)
-Q = [
-%   MSL     dMSL      AGL
-    0.01,   1,        1; % MSL
-    1,      0.01,    10; % dMSL
-    1,      10,       0.01; % AGL
-    ];
+Q = 0.01 * eye(length(x));
 
 % State to measurement matrix
 H = [
