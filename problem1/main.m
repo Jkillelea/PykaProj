@@ -11,50 +11,47 @@ laser1 = logfile(:, 3);
 laser2 = logfile(:, 4);
 
 % State vector
-x = [0;  % AGL
-     0;  % dAGL
-     0;  % Terrain
-     0;  % dTerrain
-     ];
+x = [
+    0;  % MSL
+    0;  % dMSL
+    0;  % AGL
+    0;  % Terrain
+    ];
+
 % State update matrix
 A = [
-%   AGL dAGL Terrain dTerrain
-    1,  1,   0,     -1;
-    0,  1,   0,      0;
-    0,  0,   1,      1;
-    0, -1,   0,      1;
+%   MSL dMSL AGL Terrain
+    1,  1,   0,  0; % MSL = MSL + dMSL
+    0,  1,   0,  0; % dMSL = dMSL
+    0,  1,   1,  0; % AGL = AGL + dMSL
+    0,  0,   0,  1; % Terrain  = Terrain
     ];
 
 % initial state estimation covariance
 P = ones(length(x));
 
 % state estimation uncertainty growth (per iteration)
-Q = [0.001];
+% Q = [0.001];
+Q = 0.1 * P;
 
 % State to measurement matrix
-%   agl dagl Terrain dTerrain
 H = [
-    1,  0,  1,      0;  % GPS     = AGL + Terrain
-    0,  1,  0,     -1;  % dGPS    = dAGL - dTerrain
-    1,  0,  0,      0;  % laser1  = AGL
-    0,  1,  0,     -1;  % dlaser1 = dAGL - dTerrain
-    1,  0,  0,      0;  % laser2  = AGL
-    0,  1,  0,     -1;  % dlaser2 = dAGL - dTerrain
+%   MSL dMSL AGL Terrain
+    1,  0,   0,  0;  % GPS     = MSL
+    0,  1,   0,  0;  % dGPS    = dMSL
+    0,  0,   1,  0;  % laser1  = AGL
+    0,  0,   1,  0;  % laser2  = MSL - Terrain
      ];
 
-dgps    = [0; diff(gps)];
-dlaser1 = [0; diff(laser1)];
-dlaser2 = [0; diff(laser2)];
-
-data = [gps, dgps, laser1, dlaser1, laser2, dlaser2];
+dgps  = [0; diff(gps)];
+data = [gps, dgps, laser1, laser2];
 
 R = [
-    5.6191e-01   3.7912e-04  -1.4529e-02   1.8362e-04  -8.5454e-03   1.4775e-04
-    3.7912e-04   2.6099e-05  -7.2327e-05   2.4852e-06  -8.1877e-05   3.0357e-06
-   -1.4529e-02  -7.2327e-05   2.7869e-02   1.2229e-04   2.7874e-02   1.5943e-04
-    1.8362e-04   2.4852e-06   1.2229e-04   2.8554e-04  -1.3987e-04   5.9946e-05
-   -8.5454e-03  -8.1877e-05   2.7874e-02  -1.3987e-04   2.9542e-02   1.2854e-04
-    1.4775e-04   3.0357e-06   1.5943e-04   5.9946e-05   1.2854e-04   2.9498e-04
+    10.5038   10.5059    3.1679    3.1304
+    10.5059   21.0118    3.1664    3.1409
+    3.1679    3.1664    2.4990    1.1770
+    3.1304    3.1409    1.1770   21.4385
+
     ];
 
 state_estimation_result = zeros(length(t), length(x));
@@ -110,7 +107,7 @@ figure; hold on; grid on;
 plot(t, gps,    'DisplayName', 'gps');
 plot(t, laser1, 'DisplayName', 'laser1');
 plot(t, laser2, 'DisplayName', 'laser2');
-plot(t, state_estimation_result(:, 1)); % AGL
-plot(t, state_estimation_result(:, 3)); % Terrain
+% plot(t, state_estimation_result(:, 1)); % AGL
+plot(t, state_estimation_result(:, 3)); % AGL
 legend('show');
 
