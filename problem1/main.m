@@ -2,8 +2,8 @@ clear all;
 close all;
 clc;
 
-% logfile = dlmread('log1.csv');
-logfile = dlmread('log2.csv');
+logfile = dlmread('log1.csv');
+% logfile = dlmread('log2.csv');
 
 t      = logfile(:, 1);
 gps    = logfile(:, 2);
@@ -15,32 +15,34 @@ x = [
     0;  % MSL
     0;  % dMSL
     0;  % AGL
-    0;  % Terrain
     ];
 
 % State update matrix
 A = [
-%   MSL dMSL AGL Terrain
-    1,  1,   0,  0; % MSL = MSL + dMSL
-    0,  1,   0,  0; % dMSL = dMSL
-    0,  1,   1,  0; % AGL = AGL + dMSL
-    0,  0,   0,  1; % Terrain  = Terrain
+%   MSL dMSL AGL
+    1,  1,   0; % MSL = MSL + dMSL
+    0,  1,   0; % dMSL = dMSL
+    0,  1,   1; % AGL = AGL + dMSL
     ];
 
 % initial state estimation covariance
 P = ones(length(x));
 
 % state estimation uncertainty growth (per iteration)
-% Q = [0.001];
-Q = 0.1 * P;
+Q = [
+%   MSL     dMSL      AGL
+    0.01,   1,        1; % MSL
+    1,      0.01,    10; % dMSL
+    1,      10,       0.01; % AGL
+    ];
 
 % State to measurement matrix
 H = [
-%   MSL dMSL AGL Terrain
-    1,  0,   0,  0;  % GPS     = MSL
-    0,  1,   0,  0;  % dGPS    = dMSL
-    0,  0,   1,  0;  % laser1  = AGL
-    0,  0,   1,  0;  % laser2  = MSL - Terrain
+%   MSL dMSL AGL
+    1,  0,   0;  % GPS     = MSL
+    0,  1,   0;  % dGPS    = dMSL
+    0,  0,   1;  % laser1  = AGL
+    0,  0,   1;  % laser2  = MSL - Terrain
      ];
 
 dgps  = [0; diff(gps)];
@@ -49,9 +51,8 @@ data = [gps, dgps, laser1, laser2];
 R = [
     10.5038   10.5059    3.1679    3.1304
     10.5059   21.0118    3.1664    3.1409
-    3.1679    3.1664    2.4990    1.1770
-    3.1304    3.1409    1.1770   21.4385
-
+    3.1679    3.1664     2.4990    1.1770
+    3.1304    3.1409     1.1770   11.4385
     ];
 
 state_estimation_result = zeros(length(t), length(x));
