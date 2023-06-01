@@ -54,44 +54,51 @@ int main(int argc, char *argv[]) {
     csv_free(&parser);
 
 
-    Eigen::MatrixXd A {
-        // AGL dAGL Terrain dTerrain
-        {1,    1,   0,     -1}, // AGL
-        {0,    1,   0,      0}, // dAGL
-        {0,    0,   1,      1}, // Terrain
-        {0,   -1,   0,      1}, // dTerrain
+    /* Implment a kalman filter */
+
+    // State transition matrix for unforced motion (Ax + Bu, u = 0)
+    const Eigen::Matrix3d A {
+     //  MSL dMSL AGL
+        {1,  1,   0}, // MSL = MSL + dMSL
+        {0,  1,   0}, // dMSL = dMSL
+        {0,  1,   1}, // AGL = AGL + dMSL
     };
 
-    // Eigen::MatrixXd P = TODO
-    // Eigen::MatrixXd Q = TODO
+    // (Co)variance matrix
+    Eigen::Matrix3d P {
+        {1, 0, 0},
+        {0, 1, 0},
+        {0, 0, 1},
+    };
 
-    // Covariance matrix of measurements
-    Eigen::MatrixXd R {
-        { 5.6191e-01,  3.7912e-04, -1.4529e-02,  1.8362e-04, -8.5454e-03,  1.4775e-04},
-        { 3.7912e-04,  2.6099e-05, -7.2327e-05,  2.4852e-06, -8.1877e-05,  3.0357e-06},
-        {-1.4529e-02, -7.2327e-05,  2.7869e-02,  1.2229e-04,  2.7874e-02,  1.5943e-04},
-        { 1.8362e-04,  2.4852e-06,  1.2229e-04,  2.8554e-04, -1.3987e-04,  5.9946e-05},
-        {-8.5454e-03, -8.1877e-05,  2.7874e-02, -1.3987e-04,  2.9542e-02,  1.2854e-04},
-        { 1.4775e-04,  3.0357e-06,  1.5943e-04,  5.9946e-05,  1.2854e-04,  2.9498e-04},
+    // (Co)variance growth per iteration, mostly guessing
+    const Eigen::Matrix3d Q {
+    //  MSL     dMSL      AGL
+        {0.01,   1,        1   }, // MSL
+        {1,      0.01,    10   }, // dMSL
+        {1,      10,       0.01}, // AGL
+    };
+
+    // (Co)variance matrix of measurements, found experimentally
+    const Eigen::Matrix4d R {
+        {10.5038,  10.5059,   3.1679,   3.1304},
+        {10.5059,  21.0118,   3.1664,   3.1409},
+        {3.1679,   3.1664,    2.4990,   1.1770},
+        {3.1304,   3.1409,    1.1770,  11.4385},
     };
 
     Eigen::MatrixXd H {
-        // AGL dAGL Terrain dTerrain
-        {1,    0,   1,      0}, // GPS     = AGL + Terrain
-        {0,    1,   0,     -1}, // dGPS    = dAGL - dTerrain
-        {1,    0,   0,      0}, // laser1  = AGL
-        {0,    1,   0,     -1}, // dlaser1 = dAGL - dTerrain
-        {1,    0,   0,      0}, // laser2  = AGL
-        {0,    1,   0,     -1}, // dlaser2 = dAGL - dTerrain
+        //   MSL dMSL AGL
+        {1,  0,   0},  // GPS     = MSL
+        {0,  1,   0},  // dGPS    = dMSL
+        {0,  0,   1},  // laser1  = AGL
+        {0,  0,   1},  // laser2  = MSL - Terrain
     };
 
 
     double last_t = 0;
     double last_gps = 0;
-    double last_laser1 = 0;
-    double last_laser2 = 0;
-    Eigen::VectorXd state {{0, 0, 0, 0}};
-    Eigen::VectorXd last_z {{0, 0, 0, 0, 0, 0}};
+    Eigen::Vector3d x {{0, 0, 0}}; // state vector
 
     for (auto &row : logfile_data) {
         double t      = row[0];
@@ -102,14 +109,24 @@ int main(int argc, char *argv[]) {
         // Calculate derivatives
         double dt = t - last_t;
         double dgps = dt > 0 ? (gps - last_gps) / dt : 0;
-        double dlaser1 = dt > 0 ? (laser1 - last_laser1) / dt : 0;
-        double dlaser2 = dt > 0 ? (laser2 - last_laser2) / dt : 0;
 
-        Eigen::VectorXd z {{gps, dgps, laser1, dlaser1, laser2, dlaser2}};
 
-        auto state_next = A * state;
+        // Next predicted state and covariance
+        auto x_next = A * x;
+        auto P_next = A * P * A.transpose() + Q;
 
-        std::cout << state_next << std::endl << std::endl;
+        // measurement vector
+        Eigen::Vector4d z {{gps, dgps, laser1, laser2}};
+        auto z_pred = H * x;
+
+        // Calculate Kalman gain
+        auto K = P_next * H.transpose() * ((H * P_next * H.transpose() + R).inverse());
+
+        // Update
+        x = x_next + K * (z - z_pred);
+        P = P_next - K * H * P_next;
+
+        std::cout << x << std::endl << std::endl;
     }
 
     return 0;
