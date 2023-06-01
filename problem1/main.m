@@ -103,7 +103,10 @@ figure; hold on; grid on;
 plot(t, gps,    'DisplayName', 'gps');
 plot(t, laser1, 'DisplayName', 'laser1');
 plot(t, laser2, 'DisplayName', 'laser2');
-% plot(t, state_estimation_result(:, 1)); % AGL
+plot(t, state_estimation_result(:, 1)); % MSL
 plot(t, state_estimation_result(:, 3)); % AGL
 legend('show');
 
+result = dlmread('kalmanresult.csv');
+plot(result(:, 1), result(:, 2), 'DisplayName', 'C++ result'); % AGL
+legend('show');
